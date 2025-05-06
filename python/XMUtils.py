@@ -1,76 +1,52 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 __author__ = 'xiaomi passport (xiaomi-account-dev@xiaomi.com)'
 
 '''
-Python client SDK for xiaomi Open API
+Python 3 client SDK utility for Xiaomi Open API
 '''
 
 import random
 import sys
 import time
-import hmac, hashlib
-from urllib import quote
+import hmac
+import hashlib
+import base64
+from urllib.parse import quote
 
-class XMUtils():
+
+class XMUtils:
     '''
-     获取一个随机字符串
-     获取随机nonce值 : 格式为  随机数:分钟数
+    Utility functions for generating nonce, MAC signature, and headers
     '''
-    def getNonce(self):
-        r = random.randint(-sys.maxint, sys.maxint)
-        m = (int)(time.time() / 60)
-        return '%d:%d' % (r, m)
-    
-    '''
-    构造mac type签名串
-    '''
-    def getSignString(self, nonce, method, host, path, params):
-        if nonce == None or nonce.index(':') == -1:
-            raise Exception("input nonce error, " + nonce);
-        if (method != 'GET' and method != 'POST') or not host:
-            raise Exception("input param error");
-        
-        sign = []
-        
-        sign.append(nonce)
-        sign.append(method)
-        sign.append(host)
-        path = path if path else "";
-        sign.append(path)
-        
-        paramsKeys = params.keys()
-        paramsKeys.sort()
-        items = []
-        for key in paramsKeys:
-            items.append("%s=%s" % (key, params.get(key)))
-            
-        if items :
-            sign.append('&'.join(items))
-        else:
-            sign.append('')
-        
+
+    def getNonce(self) -> str:
+        r = random.randint(-sys.maxsize, sys.maxsize)
+        m = int(time.time() / 60)
+        return f"{r}:{m}"
+
+    def getSignString(self, nonce: str, method: str, host: str, path: str, params: dict) -> str:
+        if not nonce or ':' not in nonce:
+            raise ValueError(f"Invalid nonce: {nonce}")
+        if method not in ('GET', 'POST') or not host:
+            raise ValueError("Invalid method or host")
+
+        sign = [nonce, method.upper(), host, path or ""]
+
+        sorted_keys = sorted(params.keys()) if params else []
+        items = [f"{key}={params[key]}" for key in sorted_keys]
+
+        sign.append('&'.join(items) if items else '')
         return '\n'.join(sign) + '\n'
-     
-    '''
-     mac type签名算法
-    '''
-    def buildSignature(self, nonce, method, host, path, params, secret):
+
+    def buildSignature(self, nonce: str, method: str, host: str, path: str, params: dict, secret: str) -> str:
         signString = self.getSignString(nonce, method, host, path, params)
-        h = hmac.new(secret, signString, hashlib.sha1)
-        s = h.digest()
-        signature = s.encode('base64').strip()
+        h = hmac.new(secret.encode('utf-8'), signString.encode('utf-8'), hashlib.sha1)
+        signature = base64.b64encode(h.digest()).decode('utf-8').strip()
         return signature
 
-    '''
-     获取mac type access token请求api的头部信息
-    '''    
-    def buildMacRequestHead(self, accessToken, nonce, sign):
-        macHeader = 'MAC access_token="%s", nonce="%s",mac="%s"' % (quote(accessToken), nonce, quote(sign))
-        header = {}
-        header['Authorization'] = macHeader
-        return header
-        
-        
+    def buildMacRequestHead(self, accessToken: str, nonce: str, sign: str) -> dict:
+        macHeader = f'MAC access_token="{quote(accessToken)}", nonce="{nonce}", mac="{quote(sign)}"'
+        return {'Authorization': macHeader}
